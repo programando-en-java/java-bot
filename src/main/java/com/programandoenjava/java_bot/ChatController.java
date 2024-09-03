@@ -1,10 +1,17 @@
 package com.programandoenjava.java_bot;
 
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.PromptChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.InMemoryChatMemory;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
+
+import static org.springframework.ai.chat.client.advisor.AbstractChatMemoryAdvisor.CHAT_MEMORY_CONVERSATION_ID_KEY;
+import static org.springframework.ai.chat.client.advisor.AbstractChatMemoryAdvisor.CHAT_MEMORY_RETRIEVE_SIZE_KEY;
 
 @RequestMapping("/chats")
 @RestController
@@ -28,16 +35,33 @@ public class ChatController {
 
     private final ChatClient chatClient;
 
-    public ChatController(final ChatClient.Builder chatClientBuilder) {
-        this.chatClient = chatClientBuilder.build();
+    public ChatController(
+            final ChatClient.Builder chatClientBuilder
+    ) {
+
+        final var chatMemory = new InMemoryChatMemory();
+
+        this.chatClient = chatClientBuilder
+                .defaultSystem(SYSTEM_PROMPT)
+                .defaultAdvisors(
+                        new PromptChatMemoryAdvisor(chatMemory),
+                        new MessageChatMemoryAdvisor(chatMemory)
+                )
+                .build();
     }
 
-    @PostMapping
-    public String postChat(@RequestBody final ChatRequest chatRequest) {
-        return this.chatClient.prompt()
-                .system(SYSTEM_PROMPT)
-                .user(chatRequest.message())
-                .call()
+    @GetMapping
+    public Flux<String> postChat(@RequestParam final String message,
+                                 @RequestParam final String userId
+    ) {
+        return chatClient.prompt()
+                .user(message)
+                .advisors(a -> a
+                        .param(CHAT_MEMORY_CONVERSATION_ID_KEY, userId)
+                        .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 100))
+                .stream()
                 .content();
     }
+
 }
+
